@@ -1,4 +1,8 @@
 @import "tailwindcss";
+
+/* ── GiftMate design tokens ─────────────────────────────────────────────
+   Warm "wrapped gift" palette: linen paper, plum ink, festive saffron,
+   a gift-rose accent, and a deep plum. The ribbon gradient is the signature. */
 @theme inline {
   --color-bg: #fbf6f1;
   --color-surface: #ffffff;
@@ -109,4 +113,32 @@ body {
   padding: 0.05rem 0.3rem;
   border-radius: 0.3rem;
   font-size: 0.85em;
+}
+
+/* Markdown tables in assistant bubbles */
+.prose-chat table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.8rem;
+  display: block;
+  overflow-x: auto;
+}
+.prose-chat thead {
+  background: var(--color-bg);
+}
+.prose-chat th,
+.prose-chat td {
+  border: 1px solid var(--color-line);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+.prose-chat th {
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.prose-chat tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--color-bg) 55%, transparent);
 }

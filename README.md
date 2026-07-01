@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎁 GiftMate Sri Lanka — AI Gift Concierge Agent
 
-## Getting Started
+> A multilingual AI shopping agent with **visible editable memory**, **MCP tool calling**, product cards, delivery checking, cart flow, and voice interaction.
 
-First, run the development server:
+GiftMate is an AI agent that helps you find and order gifts anywhere in Sri Lanka.
+Chat or speak in **English, Sinhala (සිංහල), or Tanglish** — the agent remembers your
+occasion, recipient, city and budget as editable **memory pills**, searches a
+Kapruka-style supplier catalog over **MCP (Model Context Protocol)**, checks
+delivery to your city, and places your order.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## ✨ The agent flow
+
+```
+User message ("Birthday cake for amma under Rs. 5000 in Colombo")
+   ↓
+AI Agent  (Groq gpt-oss-120b via Vercel AI SDK — decides which tool to call)
+   ↓
+MCP Tool Call  (Model Context Protocol over Streamable HTTP)
+   ↓
+Supplier product system  (/api/mcp → Supabase Postgres catalog)
+   ↓
+Product results (structured JSON)
+   ↓
+AI answer + rendered product cards, delivery banners, order confirmation
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠 MCP tools exposed by the server (`/api/mcp`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Tool | What it does |
+|------|--------------|
+| `update_memory` | Keeps the agent's visible memory pills in sync |
+| `kapruka_search_products` | Searches the supplier catalog (occasion, recipient, city, budget, category) |
+| `kapruka_get_product` | Fetches full details for one product |
+| `kapruka_check_delivery` | Confirms a product can reach a city by a date |
+| `kapruka_add_to_cart` | Adds a product to the cart |
+| `kapruka_create_order` | Records the order in the database |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Because it's a standard MCP server, any MCP client (Claude Desktop, Cursor,
+MCP Inspector) can connect to `http://localhost:3000/api/mcp` and use these
+same tools — try `npx @modelcontextprotocol/inspector`.
 
-## Learn More
+> **Note:** Kapruka has no public API, so the "supplier system" is a
+> Kapruka-*style* product service backed by this project's own Supabase
+> catalog. The architecture is identical to a real supplier integration —
+> only the data source would change.
 
-To learn more about Next.js, take a look at the following resources:
+## 🧠 Visible, editable memory
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The agent's working memory is shown as pills under the header. Click a pill's
+✏️ to correct it (the agent is informed), or × to make the agent forget it.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🚀 Stack
 
-## Deploy on Vercel
+- **Next.js 16** (App Router) · React 19 · Tailwind CSS 4 · Framer Motion
+- **Vercel AI SDK v6** (`streamText`, tool loop) + **Groq** `openai/gpt-oss-120b`
+- **MCP**: `mcp-handler` (server route) + `@ai-sdk/mcp` (client)
+- **Supabase** Postgres (products + orders, RLS, SQL search function)
+- **Web Speech API** for voice input & spoken replies
+- Zustand for cart/memory state
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🏃 Run locally
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm install
+```
+
+Create `.env.local`:
+
+```
+GROQ_API_KEY=gsk_your_key                    # console.groq.com (free)
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co    # optional
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...                # optional
+```
+
+Without Supabase keys the app runs on a built-in 16-product demo catalog.
+With them, run `supabase/schema.sql`, `supabase/seed.sql`, and
+`supabase/orders.sql` in the Supabase SQL Editor first.
+
+```bash
+pnpm dev   # → http://localhost:3000
+```
+
+Voice input needs Chrome on `localhost` or HTTPS.
+
+## 📁 Key files
+
+```
+app/api/[transport]/route.ts   MCP server (the 6 tools)
+app/api/chat/route.ts          AI agent + MCP client
+lib/products.ts                Data layer (Supabase, local fallback)
+lib/persona.ts                 Agent system prompt (multilingual)
+components/criteria-bar.tsx    Editable agent memory pills
+components/chat-message.tsx    Renders text + tool results (cards, banners)
+supabase/*.sql                 Schema, seed data, orders table
+```

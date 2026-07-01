@@ -99,37 +99,3 @@ export async function getProductById(id: string): Promise<Product | null> {
   if (error) throw new Error(`getProductById failed: ${error.message}`);
   return data ? rowToProduct(data as ProductRow) : null;
 }
-
-// ── Orders ───────────────────────────────────────────────────────────────────
-export type OrderItem = {
-  productId: string;
-  name: string;
-  price: number;
-  quantity: number;
-};
-
-export async function createOrder(args: {
-  items: OrderItem[];
-  totalAmount: number;
-  city?: string;
-}): Promise<{ orderId: string; recorded: boolean }> {
-  const orderId = `GM-${Date.now().toString(36).toUpperCase()}-${Math.random()
-    .toString(36)
-    .slice(2, 6)
-    .toUpperCase()}`;
-
-  if (!isSupabaseConfigured || !supabase) {
-    // No DB configured — return an order id without persisting (demo mode).
-    return { orderId, recorded: false };
-  }
-
-  const { error } = await supabase.from("orders").insert({
-    id: orderId,
-    items: args.items,
-    total_amount: args.totalAmount,
-    city: args.city ?? null,
-    status: "pending",
-  });
-  if (error) throw new Error(`createOrder failed: ${error.message}`);
-  return { orderId, recorded: true };
-}

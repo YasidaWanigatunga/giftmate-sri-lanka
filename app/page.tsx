@@ -5,7 +5,7 @@ import { DefaultChatTransport } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Gift, ShoppingBag, Volume2, VolumeX } from "lucide-react";
 import { CriteriaBar } from "@/components/criteria-bar";
-import { ChatMessage } from "@/components/chat-message";
+import { ChatMessage, normalizeToolPart } from "@/components/chat-message";
 import { ChatInput } from "@/components/chat-input";
 import { CartDrawer } from "@/components/cart-drawer";
 import { useCriteriaStore } from "@/hooks/use-criteria";
@@ -14,9 +14,9 @@ import { useSpeech } from "@/hooks/use-speech";
 
 const SUGGESTIONS = [
   "Birthday gift for amma under Rs. 5000 in Colombo 🎂",
+  "Ammata upandinayakata cake ekak ona, Colombo 🎂",
+  "Graduation gift for my friend, tech lover, Rs. 3000 🎧",
   "Anniversary flowers delivered to Kandy 🌸",
-  "Graduation gift for my friend, tech lover 🎧",
-  "Surprise for girlfriend, Valentine's, under 6000 💝",
 ];
 
 export default function Home() {
@@ -48,17 +48,15 @@ export default function Home() {
     for (const m of messages) {
       if (m.role !== "assistant") continue;
       for (const part of m.parts) {
-        if (!part.type.startsWith("tool-")) continue;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const p = part as any;
-        if (p.state !== "output-available") continue;
-        if (processedTools.current.has(p.toolCallId)) continue;
-        processedTools.current.add(p.toolCallId);
+        const tool = normalizeToolPart(part);
+        if (!tool || tool.state !== "output-available") continue;
+        if (processedTools.current.has(tool.toolCallId)) continue;
+        processedTools.current.add(tool.toolCallId);
 
-        if (part.type === "tool-updateCriteria" && p.output?.updated) {
-          setCriteria(p.output.updated);
-        } else if (part.type === "tool-addToCart" && p.output?.success) {
-          addItem(p.output.item as CartItem);
+        if (tool.name === "update_memory" && tool.payload?.updated) {
+          setCriteria(tool.payload.updated);
+        } else if (tool.name === "kapruka_add_to_cart" && tool.payload?.success) {
+          addItem(tool.payload.item as CartItem);
         }
       }
     }
@@ -135,7 +133,11 @@ export default function Home() {
         </div>
       </header>
 
-      <CriteriaBar />
+      <CriteriaBar
+        onEdit={(key, value) =>
+          send(`Update your memory: my ${key} is now "${value}".`)
+        }
+      />
 
       {/* Messages */}
       <div ref={scrollRef} className="scroll-quiet flex-1 overflow-y-auto px-4 py-5">
@@ -149,9 +151,10 @@ export default function Home() {
                 Find the <span className="text-ribbon">perfect gift</span>
               </h2>
               <p className="mt-1 max-w-md text-sm text-[var(--color-muted)]">
-                Tell me the occasion, who it&apos;s for, your city and budget —
-                in English, Sinhala, or Tanglish. I&apos;ll find gifts, check
-                delivery, and help you check out.
+                Chat or speak in English, Sinhala, or Tanglish. I remember your
+                occasion, budget and city as editable memory pills, search a
+                Kapruka-style catalog over MCP, check delivery, and place your
+                order.
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 {SUGGESTIONS.map((s) => (
@@ -189,11 +192,14 @@ export default function Home() {
       <CartDrawer
         open={cartOpen}
         onOpenChange={setCartOpen}
-        onCheckout={(total) =>
+        onCheckout={(total) => {
+          const items = cartItems
+            .map((i) => `${i.name} (id: ${i.id}) x${i.quantity} @ Rs.${i.price}`)
+            .join("; ");
           send(
-            `I'd like to checkout now. My cart total is Rs. ${total}. Please create the checkout.`
-          )
-        }
+            `I'd like to place my order now. Cart: ${items}. Total: Rs. ${total}. Please create the order.`
+          );
+        }}
       />
     </div>
   );

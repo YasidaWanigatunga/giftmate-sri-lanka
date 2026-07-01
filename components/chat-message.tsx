@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -16,78 +17,104 @@ import type { UIMessage } from "ai";
 import type { Product } from "@/lib/mock-products";
 import { ProductCard } from "./product-card";
 
-/** A relaxed view of an AI SDK tool UI part — outputs aren't statically typed here. */
-type ToolPart = {
-  type: string;
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+// A tool part can arrive two ways:
+//   - static tools:  { type: "tool-searchProducts", ... }
+//   - MCP tools:     { type: "dynamic-tool", toolName: "searchProducts", ... }
+// normalizeToolPart flattens both into one shape, and extracts the structured
+// payload (MCP wraps it in result.structuredContent / result.content[].text).
+export type NormalizedTool = {
+  name: string;
   toolCallId: string;
-  state: "input-streaming" | "input-available" | "output-available" | "output-error";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  state: string;
   input?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  output?: any;
+  payload?: any;
   errorText?: string;
 };
 
-function isToolType(type: string): boolean {
-  return type.startsWith("tool-");
+function extractPayload(output: any): any {
+  if (output == null) return undefined;
+  if (typeof output === "object" && !Array.isArray(output)) {
+    if (output.structuredContent != null) return output.structuredContent;
+    if (Array.isArray(output.content)) {
+      const textPart = output.content.find((c: any) => c?.type === "text");
+      if (textPart?.text) {
+        try {
+          return JSON.parse(textPart.text);
+        } catch {
+          /* fall through */
+        }
+      }
+    }
+  }
+  return output; // static tools already return the payload directly
+}
+
+export function normalizeToolPart(part: any): NormalizedTool | null {
+  let name: string | null = null;
+  if (part?.type === "dynamic-tool") name = part.toolName;
+  else if (typeof part?.type === "string" && part.type.startsWith("tool-"))
+    name = part.type.slice(5);
+  if (!name) return null;
+
+  return {
+    name,
+    toolCallId: part.toolCallId,
+    state: part.state,
+    input: part.input,
+    payload: extractPayload(part.output),
+    errorText: part.errorText,
+  };
 }
 
 const TOOL_LABEL: Record<string, string> = {
-  "tool-updateCriteria": "Updating your gift tags",
-  "tool-searchProducts": "Searching for gifts",
-  "tool-checkDelivery": "Checking delivery",
-  "tool-addToCart": "Adding to cart",
-  "tool-createCheckout": "Preparing checkout",
+  update_memory: "Updating memory",
+  kapruka_search_products: "Searching the supplier catalog",
+  kapruka_get_product: "Fetching product details",
+  kapruka_check_delivery: "Checking delivery",
+  kapruka_add_to_cart: "Adding to cart",
+  kapruka_create_order: "Placing your order",
 };
 
-function Pending({ type }: { type: string }) {
+function Pending({ name }: { name: string }) {
   return (
     <div className="flex items-center gap-2 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-muted)]">
       <Loader2 className="size-3.5 animate-spin text-plum" />
-      {TOOL_LABEL[type] ?? "Working"}…
+      {TOOL_LABEL[name] ?? "Working"}…
     </div>
   );
 }
 
-function DeliveryBanner({
-  output,
-}: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  output: any;
-}) {
-  if (!output) return null;
-  if (output.available === false) {
+function DeliveryBanner({ data }: { data: any }) {
+  if (!data) return null;
+  if (data.available === false) {
     return (
       <div className="flex items-start gap-2 rounded-xl border border-rose/30 bg-rose/5 px-3 py-2 text-sm text-[var(--color-ink)]">
         <Ban className="mt-0.5 size-4 shrink-0 text-rose" />
-        <span>{output.message ?? "Delivery isn't available for that."}</span>
+        <span>{data.message ?? "Delivery isn't available for that."}</span>
       </div>
     );
   }
-  if (output.warning) {
+  if (data.warning) {
     return (
       <div className="flex items-start gap-2 rounded-xl border border-saffron/40 bg-saffron/10 px-3 py-2 text-sm text-[var(--color-ink)]">
         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-saffron" />
-        <span>{output.warning}</span>
+        <span>{data.warning}</span>
       </div>
     );
   }
   return (
     <div className="flex items-start gap-2 rounded-xl border border-mint/30 bg-mint/5 px-3 py-2 text-sm text-[var(--color-ink)]">
       <MapPin className="mt-0.5 size-4 shrink-0 text-mint" />
-      <span>{output.message ?? "Delivery is available."}</span>
+      <span>{data.message ?? "Delivery is available."}</span>
     </div>
   );
 }
 
-function CheckoutCard({
-  output,
-}: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  output: any;
-}) {
-  if (!output?.checkoutUrl) return null;
-  const id = String(output.checkoutUrl).split("/").pop();
+function CheckoutCard({ data }: { data: any }) {
+  if (!data?.checkoutUrl) return null;
+  const id = data.orderId ?? String(data.checkoutUrl).split("/").pop();
   return (
     <div className="rounded-2xl border border-plum/25 bg-plum/5 p-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-ink)]">
@@ -97,7 +124,7 @@ function CheckoutCard({
       <p className="mt-1 text-sm text-[var(--color-muted)]">
         Total:{" "}
         <span className="font-semibold text-[var(--color-ink)]">
-          Rs. {Number(output.totalAmount ?? 0).toLocaleString("en-LK")}
+          Rs. {Number(data.totalAmount ?? 0).toLocaleString("en-LK")}
         </span>
       </p>
       <a
@@ -111,30 +138,30 @@ function CheckoutCard({
 }
 
 function ToolView({
-  part,
+  tool,
   onAsk,
 }: {
-  part: ToolPart;
+  tool: NormalizedTool;
   onAsk?: (text: string) => void;
 }) {
-  if (part.state === "input-streaming" || part.state === "input-available") {
-    if (part.type === "tool-updateCriteria") return null; // silent, shows in the tag bar
-    return <Pending type={part.type} />;
+  if (tool.state === "input-streaming" || tool.state === "input-available") {
+    if (tool.name === "update_memory") return null; // shows in the memory bar
+    return <Pending name={tool.name} />;
   }
-  if (part.state === "output-error") {
+  if (tool.state === "output-error") {
     return (
       <div className="rounded-xl border border-rose/30 bg-rose/5 px-3 py-2 text-xs text-rose">
-        Something went wrong: {part.errorText ?? "tool error"}
+        Something went wrong: {tool.errorText ?? "tool error"}
       </div>
     );
   }
 
-  // output-available
-  switch (part.type) {
-    case "tool-updateCriteria":
-      return null; // reflected in the gift-tag bar
-    case "tool-searchProducts": {
-      const products: Product[] = part.output?.products ?? [];
+  const data = tool.payload;
+  switch (tool.name) {
+    case "update_memory":
+      return null; // reflected in the memory bar
+    case "kapruka_search_products": {
+      const products: Product[] = data?.products ?? [];
       if (products.length === 0) return null;
       return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -144,17 +171,26 @@ function ToolView({
         </div>
       );
     }
-    case "tool-checkDelivery":
-      return <DeliveryBanner output={part.output} />;
-    case "tool-addToCart":
-      return part.output?.success ? (
+    case "kapruka_get_product": {
+      const product: Product | undefined = data?.product;
+      if (!product) return null;
+      return (
+        <div className="max-w-xs">
+          <ProductCard product={product} onAsk={onAsk} />
+        </div>
+      );
+    }
+    case "kapruka_check_delivery":
+      return <DeliveryBanner data={data} />;
+    case "kapruka_add_to_cart":
+      return data?.success ? (
         <div className="flex items-center gap-2 rounded-xl border border-mint/30 bg-mint/5 px-3 py-2 text-sm text-[var(--color-ink)]">
           <CheckCircle2 className="size-4 text-mint" />
-          {part.output.message ?? "Added to your cart."}
+          {data.message ?? "Added to your cart."}
         </div>
       ) : null;
-    case "tool-createCheckout":
-      return <CheckoutCard output={part.output} />;
+    case "kapruka_create_order":
+      return <CheckoutCard data={data} />;
     default:
       return null;
   }
@@ -171,13 +207,12 @@ export function ChatMessage({
 
   const textContent = message.parts
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((p) => (p as any).text)
     .join("");
 
-  const toolParts = message.parts.filter((p) =>
-    isToolType(p.type)
-  ) as unknown as ToolPart[];
+  const tools = message.parts
+    .map((p) => normalizeToolPart(p))
+    .filter((t): t is NormalizedTool => t !== null);
 
   return (
     <motion.div
@@ -208,15 +243,17 @@ export function ChatMessage({
               <span className="whitespace-pre-wrap">{textContent}</span>
             ) : (
               <div className="prose-chat space-y-2">
-                <ReactMarkdown>{textContent}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {textContent}
+                </ReactMarkdown>
               </div>
             )}
           </div>
         )}
 
-        {toolParts.map((part) => (
-          <div key={part.toolCallId} className="w-full">
-            <ToolView part={part} onAsk={onAsk} />
+        {tools.map((tool) => (
+          <div key={tool.toolCallId} className="w-full">
+            <ToolView tool={tool} onAsk={onAsk} />
           </div>
         ))}
       </div>
