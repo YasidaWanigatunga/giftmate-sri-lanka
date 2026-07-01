@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { MapPin, Plus, Truck, Zap } from "lucide-react";
+import { Check, MapPin, Plus, Truck, Zap } from "lucide-react";
 import type { Product } from "@/lib/mock-products";
 import { useCartStore } from "@/hooks/use-cart";
 
@@ -14,6 +15,11 @@ const CATEGORY_EMOJI: Record<Product["category"], string> = {
   toys: "🧸",
   jewelry: "💍",
   food: "🍫",
+  beauty: "🕯️",
+  books: "📚",
+  plants: "🪴",
+  hampers: "🧺",
+  experience: "🎟️",
 };
 
 export function ProductCard({
@@ -25,6 +31,13 @@ export function ProductCard({
   onAsk?: (text: string) => void;
 }) {
   const addItem = useCartStore((s) => s.addItem);
+  const [added, setAdded] = useState(false);
+
+  function handleAdd() {
+    addItem({ ...product, quantity: 1 });
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1600);
+  }
 
   return (
     <motion.div
@@ -84,10 +97,20 @@ export function ProductCard({
               <Truck className="size-4" />
             </button>
             <button
-              onClick={() => addItem({ ...product, quantity: 1 })}
-              className="flex items-center gap-1 rounded-full bg-[var(--color-ink)] px-3 py-1.5 text-xs font-semibold text-white transition-transform active:scale-95"
+              onClick={handleAdd}
+              className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white transition-transform active:scale-95 ${
+                added ? "bg-mint" : "bg-[var(--color-ink)]"
+              }`}
             >
-              <Plus className="size-3.5" /> Add
+              {added ? (
+                <>
+                  <Check className="size-3.5" /> Added
+                </>
+              ) : (
+                <>
+                  <Plus className="size-3.5" /> Add
+                </>
+              )}
             </button>
           </div>
         </div>
